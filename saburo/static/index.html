@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>サブロー</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --text: #1d1d1f; --muted: #6e6e73;
+    --line: #e3e1dc; --accent: #2f6f5e; --accent-text: #ffffff; --me: #e4efe9;
+    --error: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161616; --panel: #1f1f1f; --text: #ececec; --muted: #9a9a9a;
+      --line: #2e2e2e; --accent: #5fae96; --accent-text: #0e1a16; --me: #23332d;
+      --error: #f2b8b5;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  }
+  button { font: inherit; cursor: pointer; }
+  .hidden { display: none !important; }
+
+  #login { height: 100%; display: grid; place-items: center; padding: 16px; }
+  #login form { background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    padding: 28px; width: min(360px, 100%); display: grid; gap: 14px; }
+  #login h1 { margin: 0; font-size: 22px; }
+  input[type=password] { font: inherit; padding: 10px 12px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  .primary { background: var(--accent); color: var(--accent-text); border: 0;
+    border-radius: 10px; padding: 10px 16px; }
+  .ghost { background: none; border: 1px solid var(--line); color: var(--text);
+    border-radius: 10px; padding: 6px 12px; }
+  .err { color: var(--error); font-size: 14px; min-height: 1em; }
+
+  #app { height: 100%; display: grid; grid-template-columns: 260px 1fr; }
+  aside { border-right: 1px solid var(--line); background: var(--panel);
+    display: flex; flex-direction: column; min-height: 0; }
+  aside header { padding: 14px; display: flex; gap: 8px; }
+  aside header .primary { flex: 1; }
+  #convs { list-style: none; margin: 0; padding: 0 8px; overflow-y: auto; flex: 1; }
+  #convs li { padding: 8px 10px; border-radius: 8px; cursor: pointer; display: flex;
+    justify-content: space-between; gap: 6px; font-size: 14px; }
+  #convs li:hover, #convs li.active { background: var(--bg); }
+  #convs li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #convs li button { background: none; border: 0; color: var(--muted); padding: 0 4px; }
+  aside footer { padding: 12px 14px; border-top: 1px solid var(--line); display: flex; gap: 8px; }
+
+  main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .topbar { display: none; padding: 10px 16px; border-bottom: 1px solid var(--line);
+    align-items: center; gap: 10px; background: var(--panel); }
+  #log { flex: 1; overflow-y: auto; padding: 24px 16px; }
+  .inner { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+  .msg { white-space: normal; overflow-wrap: anywhere; }
+  .msg.user { align-self: flex-end; background: var(--me); padding: 10px 14px;
+    border-radius: 16px 16px 4px 16px; max-width: 85%; }
+  .msg.assistant { align-self: stretch; }
+  .msg pre { background: var(--panel); border: 1px solid var(--line); padding: 12px;
+    border-radius: 10px; overflow-x: auto; font-size: 14px; }
+  .msg code { font-family: ui-monospace, Menlo, monospace; font-size: 0.92em; }
+  .msg p { margin: 0 0 0.6em; } .msg p:last-child { margin-bottom: 0; }
+  .status { color: var(--muted); font-size: 14px; }
+  .msg .err { display: block; }
+  .empty { color: var(--muted); text-align: center; margin-top: 18vh; }
+
+  form#composer { padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line); background: var(--panel); }
+  form#composer .inner { flex-direction: row; gap: 10px; align-items: flex-end; }
+  textarea { flex: 1; resize: none; font: inherit; padding: 10px 12px; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--text); max-height: 40vh; }
+
+  dialog { border: 1px solid var(--line); border-radius: 16px; background: var(--panel);
+    color: var(--text); width: min(560px, calc(100% - 32px)); padding: 20px; }
+  dialog::backdrop { background: rgba(0,0,0,.4); }
+  #memlist { list-style: none; padding: 0; display: grid; gap: 8px; max-height: 60vh; overflow-y: auto; }
+  #memlist li { display: flex; gap: 10px; justify-content: space-between;
+    border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 14px; }
+
+  @media (max-width: 760px) {
+    #app { grid-template-columns: 1fr; }
+    aside { position: fixed; inset: 0 25% 0 0; z-index: 5; transform: translateX(-100%);
+      transition: transform .2s; }
+    aside.open { transform: none; box-shadow: 0 0 24px rgba(0,0,0,.25); }
+    .topbar { display: flex; }
+  }
+</style>
+</head>
+<body>
+
+<section id="login" class="hidden">
+  <form id="loginForm">
+    <h1>サブロー</h1>
+    <div style="color:var(--muted)">あなた専用のAIエージェント</div>
+    <input type="password" id="password" placeholder="パスワード" autocomplete="current-password" required>
+    <button class="primary">ログイン</button>
+    <div class="err" id="loginErr"></div>
+  </form>
+</section>
+
+<section id="app" class="hidden">
+  <aside id="sidebar">
+    <header><button class="primary" id="newChat">＋ 新しい会話</button></header>
+    <ul id="convs"></ul>
+    <footer>
+      <button class="ghost" id="openMem">🧠 記憶</button>
+      <button class="ghost" id="logout">ログアウト</button>
+    </footer>
+  </aside>
+  <main>
+    <div class="topbar">
+      <button class="ghost" id="menu" aria-label="メニュー">☰</button>
+      <strong>サブロー</strong>
+    </div>
+    <div id="log"><div class="inner" id="msgs"></div></div>
+    <form id="composer">
+      <div class="inner">
+        <textarea id="input" rows="1" placeholder="メッセージを入力（Enterで送信 / Shift+Enterで改行）"></textarea>
+        <button class="primary" id="send">送信</button>
+      </div>
+    </form>
+  </main>
+</section>
+
+<dialog id="memDialog">
+  <h3 style="margin-top:0">🧠 サブローが覚えていること</h3>
+  <ul id="memlist"></ul>
+  <form method="dialog" style="text-align:right"><button class="ghost">閉じる</button></form>
+</dialog>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let currentId = null, busy = false, owner = "";
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+// 最低限の Markdown 表示（コードブロック・太字・インラインコード・リンク・改行）
+function render(md) {
+  const parts = md.split(/```[^\n]*\n?([\s\S]*?)(?:```|$)/g);
+  return parts.map((part, i) => {
+    if (i % 2 === 1) return `<pre><code>${escapeHtml(part)}</code></pre>`;
+    let h = escapeHtml(part)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      .replace(/^#{1,6}\s+(.*)$/gm, "<strong>$1</strong>");
+    return h.split(/\n{2,}/).map((p) => p.trim() ? `<p>${p.replace(/\n/g, "<br>")}</p>` : "").join("");
+  }).join("");
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (res.status === 401) { showLogin(); throw new Error("unauthorized"); }
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+  return res;
+}
+
+function showLogin() { $("app").classList.add("hidden"); $("login").classList.remove("hidden"); }
+async function showApp() {
+  $("login").classList.add("hidden"); $("app").classList.remove("hidden");
+  owner = (await (await api("/api/me")).json()).owner;
+  await loadConvs(); openConv(null);
+}
+
+$("loginForm").onsubmit = async (e) => {
+  e.preventDefault();
+  $("loginErr").textContent = "";
+  const res = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password: $("password").value }) });
+  if (res.ok) showApp(); else $("loginErr").textContent = "パスワードが違います";
+};
+$("logout").onclick = async () => { await fetch("/api/logout", { method: "POST" }); showLogin(); };
+
+async function loadConvs() {
+  const list = await (await api("/api/conversations")).json();
+  $("convs").innerHTML = "";
+  for (const c of list) {
+    const li = document.createElement("li");
+    li.className = c.id === currentId ? "active" : "";
+    li.innerHTML = `<span>${escapeHtml(c.title)}</span><button title="削除">✕</button>`;
+    li.querySelector("span").onclick = () => openConv(c.id);
+    li.querySelector("button").onclick = async () => {
+      if (!confirm("この会話を削除しますか？")) return;
+      await api(`/api/conversations/${c.id}`, { method: "DELETE" });
+      if (currentId === c.id) openConv(null);
+      loadConvs();
+    };
+    $("convs").appendChild(li);
+  }
+}
+
+async function openConv(id) {
+  currentId = id;
+  $("sidebar").classList.remove("open");
+  $("msgs").innerHTML = "";
+  if (id === null) {
+    $("msgs").innerHTML = `<div class="empty">こんにちは、${escapeHtml(owner)}さん。<br>何でも話しかけてください。</div>`;
+  } else {
+    for (const m of await (await api(`/api/conversations/${id}`)).json()) addMsg(m.role, m.text);
+  }
+  loadConvs();
+  $("input").focus();
+}
+
+function addMsg(role, text) {
+  $("msgs").querySelector(".empty")?.remove();
+  const div = document.createElement("div");
+  div.className = `msg ${role}`;
+  div.innerHTML = role === "user" ? escapeHtml(text).replace(/\n/g, "<br>") : render(text);
+  $("msgs").appendChild(div);
+  scrollDown();
+  return div;
+}
+function scrollDown() { $("log").scrollTop = $("log").scrollHeight; }
+
+$("composer").onsubmit = async (e) => {
+  e.preventDefault();
+  const text = $("input").value.trim();
+  if (!text || busy) return;
+  busy = true; $("send").disabled = true;
+  $("input").value = ""; autosize();
+  addMsg("user", text);
+  const box = addMsg("assistant", "");
+  box.innerHTML = '<span class="status">…</span>';
+  let answer = "", errors = "";
+  const paint = (status) => {
+    box.innerHTML = render(answer) + errors + (status ? `<span class="status">${status}</span>` : "");
+    scrollDown();
+  };
+  try {
+    const res = await api("/api/chat", { method: "POST",
+      body: JSON.stringify({ message: text, conversation_id: currentId }) });
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf("\n\n")) >= 0) {
+        const line = buf.slice(0, idx); buf = buf.slice(idx + 2);
+        if (!line.startsWith("data: ")) continue;
+        const ev = JSON.parse(line.slice(6));
+        if (ev.type === "conversation") currentId = ev.id;
+        else if (ev.type === "text") { answer += ev.text; paint(); }
+        else if (ev.type === "status") paint(ev.text);
+        else if (ev.type === "error") { errors += `<span class="err">${escapeHtml(ev.text)}</span>`; paint(); }
+        else if (ev.type === "done") paint();
+      }
+    }
+  } catch (err) {
+    if (err.message !== "unauthorized") { errors += `<span class="err">通信エラー: ${escapeHtml(err.message)}</span>`; paint(); }
+  } finally {
+    busy = false; $("send").disabled = false; loadConvs();
+  }
+};
+
+function autosize() { const t = $("input"); t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }
+$("input").addEventListener("input", autosize);
+$("input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("composer").requestSubmit(); }
+});
+$("newChat").onclick = () => openConv(null);
+$("menu").onclick = () => $("sidebar").classList.toggle("open");
+
+$("openMem").onclick = async () => {
+  const list = await (await api("/api/memories")).json();
+  $("memlist").innerHTML = list.length ? "" : '<li style="color:var(--muted)">まだ何も覚えていません</li>';
+  for (const m of list) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span>${escapeHtml(m.content)}</span><button class="ghost" title="忘れさせる">✕</button>`;
+    li.querySelector("button").onclick = async () => { await api(`/api/memories/${m.id}`, { method: "DELETE" }); li.remove(); };
+    $("memlist").appendChild(li);
+  }
+  $("memDialog").showModal();
+};
+
+fetch("/api/me").then((r) => (r.ok ? showApp() : showLogin()));
+</script>
+</body>
+</html>
