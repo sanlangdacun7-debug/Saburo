@@ -108,6 +108,7 @@
     <ul id="convs"></ul>
     <footer>
       <button class="ghost" id="openMem">🧠 記憶</button>
+      <button class="ghost" id="openDec">📒 決定台帳</button>
       <button class="ghost" id="logout">ログアウト</button>
     </footer>
   </aside>
@@ -119,7 +120,7 @@
     <div id="log"><div class="inner" id="msgs"></div></div>
     <form id="composer">
       <div class="inner">
-        <textarea id="input" rows="1" placeholder="メッセージを入力（Enterで送信 / Shift+Enterで改行）"></textarea>
+        <textarea id="input" rows="1" placeholder="メッセージを入力（Enterで送信 / Shift+Enterで改行 / 投資会議は「/会議 議題」）"></textarea>
         <button class="primary" id="send">送信</button>
       </div>
     </form>
@@ -129,6 +130,12 @@
 <dialog id="memDialog">
   <h3 style="margin-top:0">🧠 サブローが覚えていること</h3>
   <ul id="memlist"></ul>
+  <form method="dialog" style="text-align:right"><button class="ghost">閉じる</button></form>
+</dialog>
+
+<dialog id="decDialog">
+  <h3 style="margin-top:0">📒 投資の決定台帳</h3>
+  <ul id="declist" style="list-style:none;padding:0;display:grid;gap:8px;max-height:60vh;overflow-y:auto"></ul>
   <form method="dialog" style="text-align:right"><button class="ghost">閉じる</button></form>
 </dialog>
 
@@ -279,6 +286,22 @@ $("openMem").onclick = async () => {
     $("memlist").appendChild(li);
   }
   $("memDialog").showModal();
+};
+
+$("openDec").onclick = async () => {
+  const list = await (await api("/api/decisions")).json();
+  $("declist").innerHTML = list.length ? "" : '<li style="color:var(--muted)">まだ記録はありません</li>';
+  for (const d of list) {
+    const li = document.createElement("li");
+    li.style.cssText = "display:flex;gap:10px;justify-content:space-between;border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:14px";
+    li.innerHTML = `<span><strong>${escapeHtml(d.status)}</strong> ${escapeHtml(d.content)}</span><button class="ghost" title="削除">✕</button>`;
+    li.querySelector("button").onclick = async () => {
+      if (!confirm("この項目を台帳から削除しますか？")) return;
+      await api(`/api/decisions/${d.id}`, { method: "DELETE" }); li.remove();
+    };
+    $("declist").appendChild(li);
+  }
+  $("decDialog").showModal();
 };
 
 fetch("/api/me").then((r) => (r.ok ? showApp() : showLogin()));

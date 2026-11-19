@@ -107,6 +107,19 @@ def remove_memory(memory_id: int, request: Request):
     return {"ok": True}
 
 
+@app.get("/api/decisions")
+def decisions(request: Request):
+    require_login(request)
+    return store.list_decisions()
+
+
+@app.delete("/api/decisions/{decision_id}")
+def remove_decision(decision_id: int, request: Request):
+    require_login(request)
+    store.delete_decision(decision_id)
+    return {"ok": True}
+
+
 @app.post("/api/chat")
 def chat(body: ChatBody, request: Request):
     require_login(request)

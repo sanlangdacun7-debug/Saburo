@@ -26,7 +26,17 @@ CREATE TABLE IF NOT EXISTS memories (
     content TEXT NOT NULL,
     created_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS decisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    content TEXT NOT NULL,
+    status TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
 """
+
+DECISION_STATUSES = ("決定", "未決定", "取消")
 
 
 @contextmanager
@@ -116,3 +126,41 @@ def list_memories() -> list[dict]:
     with connect() as db:
         rows = db.execute("SELECT id, content, created_at FROM memories ORDER BY id").fetchall()
         return [dict(r) for r in rows]
+
+
+# --- オーナーの決定事項（投資の決定台帳） ---
+
+def add_decision(content: str, status: str, note: str = "") -> int:
+    if status not in DECISION_STATUSES:
+        raise ValueError(f"status は {DECISION_STATUSES} のどれかです")
+    now = time.time()
+    with connect() as db:
+        cur = db.execute(
+            "INSERT INTO decisions (content, status, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (content, status, note, now, now),
+        )
+        return cur.lastrowid
+
+
+def update_decision(decision_id: int, status: str, note: str = "") -> bool:
+    if status not in DECISION_STATUSES:
+        raise ValueError(f"status は {DECISION_STATUSES} のどれかです")
+    with connect() as db:
+        return db.execute(
+            "UPDATE decisions SET status = ?, note = ?, updated_at = ? WHERE id = ?",
+            (status, note, time.time(), decision_id),
+        ).rowcount > 0
+
+
+def list_decisions(include_cancelled: bool = False) -> list[dict]:
+    with connect() as db:
+        sql = "SELECT id, content, status, note, created_at, updated_at FROM decisions"
+        if not include_cancelled:
+            sql += " WHERE status != '取消'"
+        rows = db.execute(sql + " ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
+
+
+def delete_decision(decision_id: int) -> bool:
+    with connect() as db:
+        return db.execute("DELETE FROM decisions WHERE id = ?", (decision_id,)).rowcount > 0
