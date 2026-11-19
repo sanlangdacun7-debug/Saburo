@@ -121,12 +121,66 @@ python -m pytest tests
 会話と記憶は `data/saburo.db`（SQLite）に保存されます。
 このファイルはあなたのパソコンの中だけにあり、Git には含まれません。
 
-## スマホや外出先から使うには
+## 外出先から使う（Cloudflare Tunnel）
 
-- 同じWi-Fi内のスマホから使う: `.env` に `SABURO_HOST=0.0.0.0` を追加して起動し、
-  スマホで `http://<パソコンのIPアドレス>:8000` を開きます。
-- 外出先から使う: クラウド（Render、Railway、Fly.io など）にデプロイし、必ず HTTPS で公開してください。
-  パスワードは長く推測されにくいものにしてください。
+自宅のパソコンでサブローを動かしたまま、スマホなどから https の URL で使えます。
+ルーターの設定やポート開放は不要です。パソコンは電源を入れたままにしておきます（起動中はスリープしないようにします）。
+
+### 1. cloudflared を入れる（最初の1回だけ）
+
+- Mac: `brew install cloudflared`
+- Windows: `winget install --id Cloudflare.cloudflared`（入れたあと PowerShell を開き直す）
+
+### 2. パスワードを強くする
+
+ネットに公開するため、`SABURO_PASSWORD` は **12文字以上** でないと起動しません。
+作り方の例: `python -c "import secrets; print(secrets.token_urlsafe(16))"`
+
+### 3. 起動する
+
+```bash
+python -m saburo.remote
+```
+
+画面に `https://〜.trycloudflare.com` の URL が出ます。スマホのブラウザで開いてログインします。
+（URL は `data/public_url.txt` にも保存されます）
+
+### クイックトンネルの注意
+
+上の方法（クイックトンネル）は Cloudflare のアカウント不要ですぐ使えますが、
+**起動し直すたびに URL が変わり**、稼働の保証もありません。
+毎回同じ URL で使いたくなったら、次の「名前付きトンネル」に切り替えます。
+
+### 名前付きトンネル（毎回同じ URL・おすすめ）
+
+自分のドメイン（年1,500円程度〜）を Cloudflare に登録してあることが前提です。
+
+1. Cloudflare のダッシュボードの Zero Trust → ネットワーク → Tunnels で、トンネルを作成（種類は cloudflared）
+2. 表示されるトークン（`eyJ...` で始まる長い文字列）をコピー
+3. Public hostname に、使いたいアドレス（例 `saburo.example.com`）と、転送先 `http://localhost:8000` を設定
+4. `.env` に次を追加して `python -m saburo.remote` で起動
+
+```
+SABURO_TUNNEL_TOKEN=eyJ...（コピーしたトークン）
+SABURO_PUBLIC_URL=https://saburo.example.com
+```
+
+さらに Cloudflare Access（Zero Trust → Access → Applications）でこのアドレスに
+「自分のメールアドレスだけ許可」を設定すると、パスワードの前にメールでの本人確認が入り、より安全です（無料枠あり）。
+
+詳しくは [Cloudflare Tunnel の公式ドキュメント](https://developers.cloudflare.com/tunnel/setup/) を参照してください。
+
+### 公開時の守り
+
+- ログインに5回失敗するとその相手は15分、全体で1時間に30回失敗すると全員が1時間ログインできなくなります
+- ログインの有効期限は30日。画面の「全端末からログアウト」で、なくしたスマホのログインも無効にできます
+- サーバーは自分のパソコン内（127.0.0.1）でだけ待ち受け、外からは Cloudflare 経由でしか届きません
+- 返答はサーバー側で作り続けるので、スマホがスリープしても投資会議は止まりません。開き直すと続きが表示されます
+
+### 同じ Wi-Fi 内のスマホから使うだけなら
+
+`.env` に `SABURO_HOST=0.0.0.0` を追加して `python -m saburo.server` で起動し、
+スマホで `http://<パソコンのIPアドレス>:8000` を開きます。
 
 ## ファイル構成
 
@@ -142,6 +196,9 @@ saburo/
     team.py     # 投資会議の段取り（情報の仕切りと監査をコードで強制）
   store.py      # 会話・記憶・決定台帳の保存（SQLite）
   server.py     # Web サーバー（ログイン・チャット API）
+  security.py   # ログインの総当たり対策・ログインの有効期限
+  jobs.py       # 返答をサーバー側で作り続ける仕組み（スマホがスリープしても止まらない）
+  remote.py     # 外出先用の起動コマンド（サブロー＋Cloudflare Tunnel）
   cli.py        # ターミナル版
   config.py     # 設定の読み込み
   static/index.html  # チャット画面

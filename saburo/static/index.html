@@ -110,6 +110,7 @@
       <button class="ghost" id="openMem">🧠 記憶</button>
       <button class="ghost" id="openDec">📒 決定台帳</button>
       <button class="ghost" id="logout">ログアウト</button>
+      <button class="ghost" id="logoutAll" title="スマホをなくしたときなど">全端末からログアウト</button>
     </footer>
   </aside>
   <main>
@@ -180,9 +181,14 @@ $("loginForm").onsubmit = async (e) => {
   $("loginErr").textContent = "";
   const res = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ password: $("password").value }) });
-  if (res.ok) showApp(); else $("loginErr").textContent = "パスワードが違います";
+  if (res.ok) showApp();
+  else $("loginErr").textContent = (await res.json().catch(() => ({}))).detail || "ログインできませんでした";
 };
 $("logout").onclick = async () => { await fetch("/api/logout", { method: "POST" }); showLogin(); };
+$("logoutAll").onclick = async () => {
+  if (!confirm("このパソコン・スマホを含め、すべての端末をログアウトさせますか？")) return;
+  await fetch("/api/logout-all", { method: "POST" }); showLogin();
+};
 
 async function loadConvs() {
   const list = await (await api("/api/conversations")).json();
@@ -210,6 +216,15 @@ async function openConv(id) {
     $("msgs").innerHTML = `<div class="empty">こんにちは、${escapeHtml(owner)}さん。<br>何でも話しかけてください。</div>`;
   } else {
     for (const m of await (await api(`/api/conversations/${id}`)).json()) addMsg(m.role, m.text);
+    const { job_id } = await (await api(`/api/conversations/${id}/job`)).json();
+    if (job_id) {
+      // 作成中の返答がある。途中までの文章は履歴と重なるので、進み具合だけ表示し、終わったら開き直す
+      busy = true; $("send").disabled = true;
+      follow(job_id, addMsg("assistant", ""), id, true).finally(async () => {
+        busy = false; $("send").disabled = false;
+        if (currentId === id) openConv(id);
+      });
+    }
   }
   loadConvs();
   $("input").focus();
@@ -226,6 +241,40 @@ function addMsg(role, text) {
 }
 function scrollDown() { $("log").scrollTop = $("log").scrollHeight; }
 
+// 返答はサーバーの裏側で作られる。画面は途中経過を取りに行く（スマホがスリープしても処理は止まらない）。
+async function follow(jobId, box, convId, statusOnly = false) {
+  let answer = "", errors = "", next = 0, fails = 0;
+  const paint = (status) => {
+    box.innerHTML = render(answer) + errors + (status ? `<span class="status">${status}</span>` : "");
+    scrollDown();
+  };
+  paint("…");
+  for (;;) {
+    if (currentId !== convId) return;  // 別の会話に移った（処理はサーバーで続く）
+    let data;
+    try {
+      data = await (await api(`/api/jobs/${jobId}?after=${next}`)).json();
+      fails = 0;
+    } catch (err) {
+      if (err.message === "unauthorized") return;
+      if (/見つかりません/.test(err.message)) { errors += `<span class="err">${escapeHtml(err.message)}</span>`; paint(); return; }
+      fails += 1;
+      paint(`通信が途切れました。再接続しています…（${fails}）`);
+      await new Promise((r) => setTimeout(r, Math.min(15000, 1000 * fails)));
+      continue;
+    }
+    let status = "";
+    for (const ev of data.events) {
+      if (ev.type === "text") { if (!statusOnly) answer += ev.text; }
+      else if (ev.type === "status") status = ev.text;
+      else if (ev.type === "error") errors += `<span class="err">${escapeHtml(ev.text)}</span>`;
+    }
+    next = data.next;
+    if (data.done) { paint(); return; }
+    paint(status || (statusOnly ? "返答を作成中です…" : "…"));
+  }
+}
+
 $("composer").onsubmit = async (e) => {
   e.preventDefault();
   const text = $("input").value.trim();
@@ -235,34 +284,15 @@ $("composer").onsubmit = async (e) => {
   addMsg("user", text);
   const box = addMsg("assistant", "");
   box.innerHTML = '<span class="status">…</span>';
-  let answer = "", errors = "";
-  const paint = (status) => {
-    box.innerHTML = render(answer) + errors + (status ? `<span class="status">${status}</span>` : "");
-    scrollDown();
-  };
   try {
     const res = await api("/api/chat", { method: "POST",
       body: JSON.stringify({ message: text, conversation_id: currentId }) });
-    const reader = res.body.getReader(), dec = new TextDecoder();
-    let buf = "";
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      let idx;
-      while ((idx = buf.indexOf("\n\n")) >= 0) {
-        const line = buf.slice(0, idx); buf = buf.slice(idx + 2);
-        if (!line.startsWith("data: ")) continue;
-        const ev = JSON.parse(line.slice(6));
-        if (ev.type === "conversation") currentId = ev.id;
-        else if (ev.type === "text") { answer += ev.text; paint(); }
-        else if (ev.type === "status") paint(ev.text);
-        else if (ev.type === "error") { errors += `<span class="err">${escapeHtml(ev.text)}</span>`; paint(); }
-        else if (ev.type === "done") paint();
-      }
-    }
+    const { job_id, conversation_id } = await res.json();
+    currentId = conversation_id;
+    loadConvs();
+    await follow(job_id, box, conversation_id);
   } catch (err) {
-    if (err.message !== "unauthorized") { errors += `<span class="err">通信エラー: ${escapeHtml(err.message)}</span>`; paint(); }
+    if (err.message !== "unauthorized") box.innerHTML += `<span class="err">エラー: ${escapeHtml(err.message)}</span>`;
   } finally {
     busy = false; $("send").disabled = false; loadConvs();
   }
