@@ -26,3 +26,9 @@ PASSWORD = os.environ.get("SABURO_PASSWORD", "")
 DATA_DIR = Path(os.environ.get("SABURO_DATA_DIR", ROOT / "data"))
 DB_PATH = DATA_DIR / "saburo.db"
 PERSONA_PATH = Path(os.environ.get("SABURO_PERSONA_FILE", ROOT / "persona.md"))
+
+# 投資会議（/会議）の設定
+# 各担当の考える深さ。空なら担当ごとの既定（high）を使う。
+TEAM_EFFORT = os.environ.get("SABURO_TEAM_EFFORT", "")
+# 監査の最大回数。2 なら「監査 → 修正 → 再監査」まで行う。
+AUDIT_ROUNDS = int(os.environ.get("SABURO_AUDIT_ROUNDS", "2"))

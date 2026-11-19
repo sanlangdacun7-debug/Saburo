@@ -17,7 +17,7 @@ def main():
             conversation_id = convs[0]["id"]
             print(f"続きから: {convs[0]['title']}")
 
-    print(f"サブロー: こんにちは、{config.OWNER_NAME}さん。（終了は Ctrl+D か /exit）")
+    print(f"サブロー: こんにちは、{config.OWNER_NAME}さん。（終了は Ctrl+D か /exit、投資会議は「/会議 議題」）")
     while True:
         try:
             text = input("\nあなた: ").strip()
@@ -32,6 +32,10 @@ def main():
             for m in store.list_memories() or []:
                 print(f"  [{m['id']}] {m['content']}")
             continue
+        if text == "/decisions":
+            for d in store.list_decisions() or []:
+                print(f"  [{d['id']}] ({d['status']}) {d['content']}")
+            continue
         if conversation_id is None:
             conversation_id = store.create_conversation(agent.title_from(text))
 
@@ -41,6 +45,8 @@ def main():
                 print(event["text"], end="", flush=True)
             elif event["type"] == "error":
                 print(f"\n[!] {event['text']}", end="")
+            elif event["type"] == "status" and agent.meeting_agenda(text) is not None:
+                print(f"\n  … {event['text']}", end="", flush=True)
         print()
 
 
