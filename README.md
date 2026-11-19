@@ -155,9 +155,11 @@ python -m saburo.remote
 
 自分のドメイン（年1,500円程度〜）を Cloudflare に登録してあることが前提です。
 
-1. Cloudflare のダッシュボードの Zero Trust → ネットワーク → Tunnels で、トンネルを作成（種類は cloudflared）
-2. 表示されるトークン（`eyJ...` で始まる長い文字列）をコピー
-3. Public hostname に、使いたいアドレス（例 `saburo.example.com`）と、転送先 `http://localhost:8000` を設定
+1. Cloudflare のダッシュボードの Networking → Tunnels で「Create Tunnel」を選び、名前を付けて作成
+2. 表示されるインストール用コマンドから、`eyJ` で始まる長い文字列（トークン）だけをコピー
+   （コマンド自体は実行しない。cloudflared は `python -m saburo.remote` が起動します）
+3. トンネルの Routes → Add route → Published application で、使いたいアドレス（例 `saburo.example.com`）と、
+   Service URL に `http://127.0.0.1:8000` を設定（`localhost` だと IPv6 で接続して失敗することがあるため）
 4. `.env` に次を追加して `python -m saburo.remote` で起動
 
 ```
